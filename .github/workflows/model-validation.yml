@@ -1,0 +1,51 @@
+name: model-validation
+
+# The real loop (ControlNet synthesis, GPU training) on a self-hosted runner with an NVIDIA GPU
+# (labels: self-hosted, gpu). Register one with: Settings -> Actions -> Runners -> New self-hosted runner.
+# Trigger: manually (choose the profile), weekly, or when the detector / data / synthesis code changes on main.
+# The job fails if the candidate does not pass the promotion gate, and uploads the report either way.
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "quick (about 1 h) or full (about 5 h)"
+        default: quick
+        type: choice
+        options: [quick, full]
+  schedule:
+    - cron: "0 3 * * 1"
+  push:
+    branches: [main]
+    paths: ["src/failforge/synthesis/**", "src/failforge/detector.py", "src/failforge/data/**", "configs/**"]
+
+jobs:
+  loop:
+    runs-on: [self-hosted, gpu]
+    timeout-minutes: 480
+    env:
+      FAILFORGE_HOME: ${{ github.workspace }}/../failforge-workspace   # persists between runs: data + models are reused
+      PROFILE: ${{ inputs.profile || 'quick' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Environment
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install -U pip
+          .venv/bin/python -m pip install -r requirements/torch-gpu.txt
+          .venv/bin/python -m pip install -e ".[gpu]"
+          .venv/bin/failforge doctor || true
+      - name: Data and models (cached in FAILFORGE_HOME after the first run)
+        run: |
+          .venv/bin/failforge data download
+          .venv/bin/failforge data prepare
+          .venv/bin/failforge models download
+      - name: Closed loop
+        run: .venv/bin/failforge loop -c "$PROFILE" --run-id "gha-${{ github.run_id }}-$PROFILE"
+      - name: Promotion gate
+        run: .venv/bin/failforge gate --check "$FAILFORGE_HOME/runs/gha-${{ github.run_id }}-$PROFILE" -c "$PROFILE"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: report-${{ env.PROFILE }}
+          path: ${{ env.FAILFORGE_HOME }}/runs/gha-${{ github.run_id }}-${{ env.PROFILE }}/report

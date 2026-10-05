@@ -1,0 +1,26 @@
+# The reference experiment (the numbers in README / reports/reference). About 4-5 hours on a
+# 6 GB RTX 3050 laptop GPU: baseline 30 epochs, 500 accepted ControlNet images, 4 arms x 12 epochs.
+# Every key is optional; see src/failforge/config.py for all options and their meaning.
+profile: full
+
+detector:
+  weights: yolo11n.pt
+  imgsz: 640
+  batch: 16
+
+train:
+  baseline_epochs: 30
+  finetune_epochs: 12
+
+synthesis:
+  backend: controlnet
+  count: 500
+
+gate:
+  target_slices: [night]
+  min_target_gain: 0.02
+  max_overall_drop: 0.005
+  max_slice_drop: 0.02
+  bootstrap: 1000
+
+arms: [baseline_ft, augment, synthetic, real]

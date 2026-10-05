@@ -1,0 +1,122 @@
+name: ci
+
+# What runs where (free GitHub runners have no GPU - see docs/architecture.md, "CI/CD"):
+#   lint          every push / PR   ruff + JS syntax
+#   test          every push / PR   unit + API + launcher + full-loop-with-fakes tests, Linux & Windows
+#   model-gate    every push / PR   re-derives the promotion decision from the committed reference
+#                                   evaluation artifacts: a PR that changes metrics, gate rules or
+#                                   the reference results inconsistently fails here
+#   smoke         every push / PR   the REAL pipeline (YOLO training, CLIP, UMAP/HDBSCAN, synthesis
+#                                   with the classical backend, bootstrap, gate, report) on a
+#                                   400-image BDD100K subset on CPU; uploads the report
+#   docker        every push / PR   the image builds and the dashboard answers
+# The full loop with ControlNet runs on a self-hosted GPU runner: model-validation.yml.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install "ruff>=0.6"
+      - run: ruff check src tests benchmarks scripts run.py --target-version py310
+      - name: Dashboard JavaScript parses
+        run: node --check src/failforge/app/static/app.js
+
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - run: pip install -r requirements/torch-cpu.txt
+      - run: pip install -e ".[cpu,dev]"
+      - name: Unit, API, launcher and fake end-to-end tests
+        run: pytest --durations=10
+
+  model-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip }
+      - run: pip install -r requirements/torch-cpu.txt && pip install -e .
+      - name: The committed reference run still passes the promotion gate
+        run: failforge gate --check reports/reference --expect promote -c full
+      - name: The control arms are still rejected by the same gate
+        run: |
+          failforge gate --check reports/reference --arm baseline_ft --expect reject -c full
+          failforge gate --check reports/reference --arm augment -c full || true
+
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      FAILFORGE_HOME: ${{ github.workspace }}/ci-workspace
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip }
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgl1
+      - run: pip install -r requirements/torch-cpu.txt && pip install -e ".[cpu]"
+      - uses: actions/cache@v4
+        with:
+          path: ci-workspace/models
+          key: models-${{ hashFiles('configs/full.yaml', 'src/failforge/config.py') }}
+      - name: Data (400-image subset), frozen golden set, validation
+        run: |
+          failforge data download -c ci
+          failforge data prepare -c ci
+      - run: failforge models download --no-diffusion -c ci
+      - name: Closed loop, every stage, on CPU
+        run: failforge loop -c ci --run-id ci
+      - name: Every stage finished and produced its artifacts
+        run: |
+          python - <<'EOF'
+          import json, pathlib, sys
+          d = pathlib.Path("ci-workspace/runs/ci")
+          st = json.loads((d / "status.json").read_text())
+          bad = [s["name"] for s in st["stages"] if s["state"] != "done"]
+          need = ["eval/baseline.json", "eval/deltas.json", "eval/ablation.json", "monitor/monitor.json",
+                  "analyze/analysis.json", "synthesize/synthesis.json", "gate/gate.json", "report/report.html"]
+          missing = [p for p in need if not (d / p).is_file()]
+          print("state:", st["state"], "| not done:", bad, "| missing:", missing)
+          sys.exit(1 if st["state"] != "done" or bad or missing else 0)
+          EOF
+      - name: Gate re-derivation works on a fresh run (decision itself not asserted at smoke scale)
+        run: failforge gate --check ci-workspace/runs/ci -c ci || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-report
+          path: |
+            ci-workspace/runs/ci/report
+            ci-workspace/runs/ci/run.log
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f docker/Dockerfile --build-arg TORCH=cpu -t failforge:ci .
+      - name: Dashboard answers (serving the committed reference run, no data needed)
+        run: |
+          docker run -d --name ff -p 8765:8765 -e FAILFORGE_SKIP_SETUP=1 failforge:ci
+          for i in $(seq 1 60); do curl -sf http://localhost:8765/api/health && break; sleep 2; done
+          curl -sf http://localhost:8765/api/runs | grep -q reference

@@ -1,0 +1,21 @@
+# A shorter loop to see everything work on your machine: about 45-75 minutes on a mid-range
+# NVIDIA GPU (1,500 day images, 8 + 4 epochs, 150 ControlNet images). Same golden set as `full`,
+# so its numbers are comparable, just from a smaller budget.
+extends: full.yaml
+profile: quick
+
+data:
+  train_day: 1500
+
+detector:
+  imgsz: 512
+
+train:
+  baseline_epochs: 8
+  finetune_epochs: 4
+
+synthesis:
+  count: 150
+
+gate:
+  bootstrap: 300

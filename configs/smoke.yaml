@@ -1,0 +1,47 @@
+# CI / sanity check: the whole loop on ~40 images per split in a few minutes on a CPU.
+# It exercises every stage and artifact, not model quality: the synthesis backend is the classical
+# relighting (no Stable Diffusion download) and the trigger is forced.
+extends: full.yaml
+profile: smoke
+limit_images: 40
+
+detector:
+  imgsz: 160
+  batch: 8
+  workers: 0
+  device: cpu
+  amp: false
+
+train:
+  baseline_epochs: 1
+  finetune_epochs: 1
+
+mining:
+  tp_sample: 200
+
+analysis:
+  min_cluster_size: 5
+  min_samples: 3
+  n_neighbors: 10
+  min_lift: 1.0
+
+drift:
+  reference_samples: 40
+  window: 40
+  permutations: 50
+
+synthesis:
+  backend: augment
+  count: 8
+  kid_reference: 20
+
+gate:
+  bootstrap: 30
+
+trigger:
+  force: true
+
+bench:
+  runs: 5
+  warmup: 1
+  batch_sizes: [1]

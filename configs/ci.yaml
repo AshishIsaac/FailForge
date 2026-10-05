@@ -1,0 +1,14 @@
+# GitHub Actions smoke test: a 400-image subset of BDD100K is downloaded (a few MB), so the golden
+# set and splits are smaller than the real ones. Use only in a throwaway workspace (CI does).
+extends: smoke.yaml
+profile: smoke
+
+data:
+  subset: 400
+  golden_day: 40
+  golden_night: 60
+  golden_dawn: 20
+  probe_day: 10
+  probe_night: 30
+  probe_dawn: 10
+  val_day: 20

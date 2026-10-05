@@ -1,0 +1,32 @@
+# Optional: the same loop as DVC stages, for teams that version data/models with DVC.
+# FailForge's own pipeline already caches and resumes stages (runs/<id>/stages/*.json); this file
+# maps the stages onto DVC so `dvc repro` / `dvc dag` work too. Paths are relative to FAILFORGE_HOME=workspace.
+vars:
+  - profile: quick
+  - run: dvc-${profile}
+stages:
+  data:
+    cmd: failforge data download && failforge data prepare
+    outs:
+      - workspace/data/manifests
+  baseline:
+    cmd: failforge loop -c ${profile} --run-id ${run} --until golden_baseline
+    deps: [workspace/data/manifests, src/failforge/detector.py, configs/${profile}.yaml]
+    outs: [workspace/runs/${run}/baseline, workspace/runs/${run}/eval/baseline.json]
+  mine_analyze:
+    cmd: failforge loop -c ${profile} --run-id ${run} --until analyze
+    deps: [workspace/runs/${run}/baseline, src/failforge/mining, src/failforge/analysis]
+    outs: [workspace/runs/${run}/mine, workspace/runs/${run}/analyze]
+  synthesize:
+    cmd: failforge loop -c ${profile} --run-id ${run} --until synthesize
+    deps: [workspace/runs/${run}/analyze, src/failforge/synthesis]
+    outs: [workspace/runs/${run}/synthesize]
+  retrain_eval:
+    cmd: failforge loop -c ${profile} --run-id ${run} --until golden_arms
+    deps: [workspace/runs/${run}/synthesize]
+    outs: [workspace/runs/${run}/retrain]
+    metrics: [workspace/runs/${run}/eval/ablation.json: {cache: false}]
+  gate:
+    cmd: failforge loop -c ${profile} --run-id ${run}
+    deps: [workspace/runs/${run}/eval/deltas.json, src/failforge/loop/gate.py]
+    metrics: [workspace/runs/${run}/gate/gate.json: {cache: false}]

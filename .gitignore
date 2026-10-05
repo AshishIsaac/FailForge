@@ -1,0 +1,31 @@
+# One-time setup state (per machine): virtual environment, install log, remembered --home/--venv
+.venv/
+.setup/
+
+# Everything downloaded or produced: data, models, runs, registry (can be ~12 GB; recreated by run.py)
+workspace/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Training / export by-products outside the workspace
+runs/
+*.onnx
+*.engine
+yolo*.pt
+!reports/reference/weights/*.pt
+mlruns/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,9 @@
+.venv
+.setup
+workspace
+runs
+reports/reference/weights
+**/__pycache__
+.pytest_cache
+.ruff_cache
+.git

@@ -1,0 +1,15 @@
+# docker compose up        -> dashboard on http://localhost:8765 (GPU)
+# docker compose run --rm failforge loop -c quick      -> a loop without the dashboard
+services:
+  failforge:
+    build: { context: ., dockerfile: docker/Dockerfile }
+    image: failforge
+    ports: ["8765:8765"]
+    volumes: ["failforge-ws:/workspace"]
+    shm_size: "4gb"   # PyTorch dataloader workers share memory
+    deploy:
+      resources:
+        reservations:
+          devices: [{ driver: nvidia, count: 1, capabilities: [gpu] }]
+volumes:
+  failforge-ws:

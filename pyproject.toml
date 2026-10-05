@@ -1,0 +1,79 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "failforge"
+version = "1.0.0"
+description = "Automated model QA and targeted synthetic data: find a detector's failure modes, synthesize labeled data for them with ControlNet, retrain, and promote only what the golden set proves."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Ashish V Isaac" }]
+keywords = ["mlops", "data-centric-ai", "active-learning", "failure-analysis", "controlnet", "stable-diffusion",
+            "synthetic-data", "yolo", "object-detection", "umap", "hdbscan", "clip", "bdd100k", "model-validation"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+]
+# torch / torchvision are NOT listed here: run.py installs the right build (CUDA or CPU) from
+# requirements/torch-*.txt first. Upper bounds keep a fresh clone on versions this repo was verified with.
+dependencies = [
+    "numpy>=1.26,<3",
+    "opencv-python>=4.9,<6",
+    "PyYAML>=6.0,<7",
+    "pillow>=10,<13",
+    "ultralytics>=8.4,<8.5",
+    "transformers>=5.18,<6",
+    "diffusers>=0.40,<0.41",
+    "accelerate>=1.15,<2",
+    "safetensors>=0.4",
+    "huggingface_hub>=0.30",
+    "scikit-learn>=1.5,<2",
+    "umap-learn>=0.5.12,<0.6",
+    "matplotlib>=3.8,<4",
+    "fastapi>=0.110,<1",
+    "uvicorn>=0.29,<1",
+]
+
+[project.urls]
+Homepage = "https://github.com/AshishIsaac/FailForge"
+Repository = "https://github.com/AshishIsaac/FailForge.git"
+Issues = "https://github.com/AshishIsaac/FailForge/issues"
+
+[project.optional-dependencies]
+# Pick one ONNX Runtime build (benchmarks only); installing both breaks provider loading.
+cpu = ["onnxruntime>=1.20,<1.31"]
+gpu = ["onnxruntime-gpu>=1.20,<1.31"]
+export = ["onnx>=1.15", "onnxslim>=0.1"]
+mlflow = ["mlflow>=2.12"]
+dev = ["pytest>=7.4", "ruff>=0.6", "httpx>=0.27", "pycocotools>=2.0.7"]
+
+[project.scripts]
+failforge = "failforge.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+failforge = ["py.typed", "app/static/*", "report/templates/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q -ra"
+markers = [
+    "slow: longer end-to-end tests",
+    "data: needs the downloaded BDD100K data (python run.py once)",
+    "gpu: needs a CUDA GPU",
+]
+filterwarnings = ["ignore::DeprecationWarning", "ignore::FutureWarning"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+src = ["src", "tests", "benchmarks", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "NPY"]
+ignore = ["E501", "B905", "SIM108", "E741"]

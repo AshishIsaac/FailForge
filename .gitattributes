@@ -1,0 +1,7 @@
+* text=auto eol=lf
+*.bat text eol=crlf
+*.png binary
+*.jpg binary
+*.pt binary
+*.npz binary
+reports/reference/** linguist-generated
